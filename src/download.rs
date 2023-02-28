@@ -1,22 +1,25 @@
 use reqwest::blocking::Client;
-use threadpool::ThreadPool;
 use std::{
     fs,
+    path::PathBuf,
     sync::{mpsc, Arc, Mutex},
 };
+use threadpool::ThreadPool;
 
 pub struct Download {
     url: String,
     threadpool: ThreadPool,
     client: Client,
+    temp_folder: PathBuf,
 }
 
 impl Download {
-    pub fn new(url: &str, n_threads: usize) -> Self {
+    pub fn new(url: &str, n_threads: usize, temp_folder: PathBuf) -> Self {
         Download {
             url: url.to_owned(),
             threadpool: ThreadPool::new(n_threads),
             client: Client::new(),
+            temp_folder
         }
     }
 
@@ -32,15 +35,18 @@ impl Download {
 
         let client = Arc::new(self.client.clone());
         let url = Arc::new(self.url.clone());
+        let temp_folder = Arc::new(self.temp_folder.clone());
 
         for interval in intervals {
             let client = Arc::clone(&client);
             let tx = tx.clone();
             let url = Arc::clone(&url);
+            let temp_folder = Arc::clone(&temp_folder);
 
             self.threadpool.execute(move || {
                 let contents = get_bytes_in_range(&client, &url, interval.0, interval.1);
-                fs::write(format!("./result/{}", interval.0), contents).unwrap();
+                let path = temp_folder.join(interval.0.to_string());
+                fs::write(path, contents).unwrap();
                 tx.send(()).unwrap();
             });
         }
@@ -53,12 +59,21 @@ impl Download {
         println!("done");
 
         let filesize = get_file_size(&client, &url);
-        let mut output = Vec::with_capacity(filesize as usize);
+        let mut output = vec![0_u8; filesize as usize];
 
-        for file in fs::read_dir("./result").unwrap() {
-            output.extend(fs::read(file.unwrap().path()).unwrap());
+        for file_entry in fs::read_dir(&self.temp_folder).unwrap() {
+            let filepath = file_entry.unwrap().path();
+            let file = fs::read(&filepath).unwrap();
+            let start = filepath
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .parse::<usize>()
+                .unwrap();
+            output.splice(start..start + file.len(), file);
+            fs::remove_file(filepath).unwrap();
         }
-
         fs::write("output.mp4", output).unwrap();
     }
 }
