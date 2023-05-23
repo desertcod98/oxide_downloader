@@ -109,6 +109,7 @@ fn into_intervals(number: u32, interval: u32) -> Vec<(u32, u32)> {
 }
 
 fn get_file_size(headers: &HeaderMap) -> u32 {
+    //TODO what to do if no file size? go back to single thread probably
     headers
         .get("content-length")
         .unwrap()
