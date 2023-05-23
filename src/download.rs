@@ -2,7 +2,7 @@ use reqwest::blocking::Client;
 use std::{
     fs,
     path::PathBuf,
-    sync::{mpsc, Arc, Mutex},
+    sync::{mpsc, Arc, Mutex}, io::Read,
 };
 use threadpool::ThreadPool;
 
@@ -36,6 +36,8 @@ impl Download {
         let client = Arc::new(self.client.clone());
         let url = Arc::new(self.url.clone());
         let temp_folder = Arc::new(self.temp_folder.clone());
+        
+        let mut temp_file_counter : u8 = 1;
 
         for interval in intervals {
             let client = Arc::clone(&client);
@@ -45,10 +47,12 @@ impl Download {
 
             self.threadpool.execute(move || {
                 let contents = get_bytes_in_range(&client, &url, interval.0, interval.1);
-                let path = temp_folder.join(interval.0.to_string());
+                let path = temp_folder.join(&temp_file_counter.to_string());
                 fs::write(path, contents).unwrap();
                 tx.send(()).unwrap();
             });
+
+            temp_file_counter += 1;
         }
 
         while *done_counter.lock().unwrap() < self.threadpool.thread_count() {
@@ -59,21 +63,26 @@ impl Download {
         println!("done");
 
         let filesize = get_file_size(&client, &url);
-        let mut output = vec![0_u8; filesize as usize];
+        let mut output = Vec::with_capacity(filesize as usize);
 
-        for file_entry in fs::read_dir(&self.temp_folder).unwrap() {
-            let filepath = file_entry.unwrap().path();
+        let mut entries = fs::read_dir(&self.temp_folder).unwrap()
+            .map(|res| res.unwrap())
+            .collect::<Vec<_>>();
+        entries.sort_by(|a, b| {
+                let number_a = a.file_name().to_string_lossy().parse::<u8>().unwrap();
+                let number_b = b.file_name().to_string_lossy().parse::<u8>().unwrap();
+                number_a.cmp(&number_b)
+            }
+        );
+
+        for entry in entries{
+            let filepath = entry.path(); 
             let file = fs::read(&filepath).unwrap();
-            let start = filepath
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .parse::<usize>()
-                .unwrap();
-            output.splice(start..start + file.len(), file);
+            output.extend(file);
             fs::remove_file(filepath).unwrap();
         }
+
+        
         fs::write("output.mp4", output).unwrap();
     }
 }

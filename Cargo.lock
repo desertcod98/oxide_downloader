@@ -970,6 +970,7 @@ dependencies = [
 [[package]]
 name = "threadpool"
 version = "0.1.0"
+source = "git+https://github.com/desertcod98/rusty-threadpool.git#30cd8e03ef7f9bbd58fd116fce475db483c097d1"
 
 [[package]]
 name = "tinyvec"
