@@ -1,4 +1,4 @@
-use reqwest::blocking::Client;
+use reqwest::{blocking::Client, header::HeaderMap};
 use std::{
     fs,
     path::PathBuf,
@@ -24,8 +24,13 @@ impl Download {
     }
 
     pub fn run(&self) {
+        
+        let headers = get_headers(&self.client, &self.url);
+        let file_size = get_file_size(&headers);
+        
+
         let intervals = into_intervals(
-            get_file_size(&self.client, &self.url),
+            file_size,
             self.threadpool.thread_count() as u32,
         );
 
@@ -62,8 +67,7 @@ impl Download {
 
         println!("done");
 
-        let filesize = get_file_size(&client, &url);
-        let mut output = Vec::with_capacity(filesize as usize);
+        let mut output = Vec::with_capacity(file_size as usize);
 
         let mut entries = fs::read_dir(&self.temp_folder).unwrap()
             .map(|res| res.unwrap())
@@ -82,8 +86,9 @@ impl Download {
             fs::remove_file(filepath).unwrap();
         }
 
+        let file_name = get_download_name(&headers, &self.url);
         
-        fs::write("output.mp4", output).unwrap();
+        fs::write(file_name, output).unwrap();
     }
 }
 
@@ -103,12 +108,8 @@ fn into_intervals(number: u32, interval: u32) -> Vec<(u32, u32)> {
     intervals
 }
 
-fn get_file_size(client: &Client, url: &str) -> u32 {
-    client
-        .get(url)
-        .send()
-        .unwrap()
-        .headers()
+fn get_file_size(headers: &HeaderMap) -> u32 {
+    headers
         .get("content-length")
         .unwrap()
         .to_str()
@@ -127,4 +128,31 @@ fn get_bytes_in_range(client: &Client, url: &str, start: u32, end: u32) -> Vec<u
         .bytes()
         .unwrap()
         .to_vec()
+}
+
+fn get_download_name(headers: &HeaderMap, url: &str) -> String{
+    let content_disposition = headers.get("Content-Disposition");
+    if let Some(cd) = content_disposition {
+        if let Ok(cd_string) = cd.to_str(){
+            if let Some(filename) = cd_string.split("filename=").nth(1){
+                return filename.to_owned();
+            }
+        }
+    }
+    let parts: Vec<&str> = url.split('/').collect();
+    if let Some(filename) = parts.last(){
+        return filename.to_string();
+    }else{
+        return "UNKNOWN".to_owned();
+    }
+    
+}
+
+fn get_headers(client: &Client, url: &str) -> HeaderMap{
+    let binding = client
+            .get(url)
+            .send()
+            .unwrap();
+        binding
+            .headers().to_owned()
 }
