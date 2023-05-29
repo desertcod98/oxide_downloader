@@ -1,10 +1,11 @@
 use config::{Config, File};
+use directories::ProjectDirs;
 use std::collections::HashMap;
+use std::fs::DirBuilder;
 use std::{
     env,
     path::{Path, PathBuf},
 };
-
 mod download;
 
 use download::Download;
@@ -16,7 +17,17 @@ fn main() {
         .unwrap();
 
     let temp_folder: PathBuf = match config.get::<String>("temp_folder") {
-        Ok(temp_folder) => PathBuf::from(temp_folder),
+        Ok(temp_folder) => {
+            let path = PathBuf::from(temp_folder);
+            if path.exists() {
+                path
+            } else {
+                ProjectDirs::from("", "desertcod98", "oxide")
+                    .unwrap()
+                    .cache_dir()
+                    .to_path_buf()
+            }
+        }
         Err(_) => {
             let current_dir = env::current_dir().expect("Couldn't get current directory");
             let mut result_path = PathBuf::from(current_dir);
@@ -25,6 +36,13 @@ fn main() {
             PathBuf::from(result_path)
         }
     };
+
+    //create temp folder if it doesn't exist
+    if !temp_folder.exists() {
+        let mut dir_builder = DirBuilder::new();
+        dir_builder.recursive(true);
+        dir_builder.create(&temp_folder).unwrap();
+    }
 
     let args: Vec<String> = env::args().collect();
 
