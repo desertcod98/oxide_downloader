@@ -1,3 +1,4 @@
+use indicatif::{ProgressBar, ProgressStyle, ProgressState};
 use reqwest::{blocking::Client, header::HeaderMap};
 use std::{
     fs,
@@ -7,7 +8,7 @@ use std::{
         mpsc::{self, Sender},
         Arc, Mutex,
     },
-    vec,
+    vec, fmt::Write,
 };
 use threadpool::ThreadPool;
 
@@ -70,12 +71,19 @@ impl Download {
 
         let mut threads_progress = vec![0; self.threadpool.thread_count() + 1];
 
+        let pb = ProgressBar::new(file_size as u64);
+        pb.set_style(ProgressStyle::with_template("[{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+            .unwrap()
+            .with_key("eta", |state: &ProgressState, w: &mut dyn Write| write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap())
+            .progress_chars("#>-"));
+
         while downloaded_bytes < file_size {
             let (id, thread_downloaded_bytes) = rx.recv().unwrap();
             threads_progress[id as usize] = thread_downloaded_bytes;
             downloaded_bytes = threads_progress.iter().sum();
-            println!("{} / {}", downloaded_bytes, file_size);
+            pb.set_position(downloaded_bytes as u64);
         }
+        pb.finish_with_message("downloaded");
 
         println!("done");
 
