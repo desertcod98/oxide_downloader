@@ -1,10 +1,9 @@
 use config::{Config, File};
 use directories::ProjectDirs;
-use std::collections::HashMap;
 use std::fs::DirBuilder;
 use std::{
     env,
-    path::{Path, PathBuf},
+    path::{PathBuf},
 };
 mod download;
 

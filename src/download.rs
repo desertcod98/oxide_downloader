@@ -9,10 +9,9 @@ use std::{
         mpsc::{self, Sender},
         Arc,
     },
-    vec, time::Duration, thread,
+    vec,
 };
 use threadpool::ThreadPool;
-
 
 pub struct Download {
     url: String,
@@ -35,9 +34,9 @@ impl Download {
         let headers = get_headers(&self.client, &self.url);
         let file_size = get_file_size(&headers);
 
-        let intervals = into_intervals(file_size, self.threadpool.thread_count() as u32);
+        let intervals = into_intervals(file_size, self.threadpool.thread_count() as u64);
 
-        let (tx, rx) = mpsc::channel::<(u16, u32)>();
+        let (tx, rx) = mpsc::channel::<(u16, u64)>();
 
         let client = Arc::new(self.client.clone());
         let url = Arc::new(self.url.clone());
@@ -45,7 +44,7 @@ impl Download {
 
         let mut temp_file_counter: u16 = 1;
 
-        let mut downloaded_bytes: u32 = 0;
+        let mut downloaded_bytes = 0;
 
         for interval in intervals {
             let client = Arc::clone(&client);
@@ -78,7 +77,7 @@ impl Download {
             )
             .unwrap()
             .with_key("eta", |state: &ProgressState, w: &mut dyn Write| {
-                write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap()
+                write!(w, "{:1}s", state.eta().as_secs()).unwrap()
             })
             .progress_chars("#>-"),
         );
@@ -117,7 +116,7 @@ impl Download {
     }
 }
 
-fn into_intervals(number: u32, interval: u32) -> Vec<(u32, u32)> {
+fn into_intervals(number: u64, interval: u64) -> Vec<(u64, u64)> {
     let interval_size = (number + 1) / interval;
     let mut intervals = Vec::new();
     let mut current_start = 0;
@@ -133,23 +132,23 @@ fn into_intervals(number: u32, interval: u32) -> Vec<(u32, u32)> {
     intervals
 }
 
-fn get_file_size(headers: &HeaderMap) -> u32 {
+fn get_file_size(headers: &HeaderMap) -> u64 {
     //TODO what to do if no file size? go back to single thread probably
     headers
         .get("content-length")
         .unwrap()
         .to_str()
         .unwrap()
-        .parse::<u32>()
+        .parse::<u64>()
         .unwrap()
 }
 
 fn get_bytes_in_range(
     client: &Client,
     url: &str,
-    start: u32,
-    end: u32,
-    tx: Sender<(u16, u32)>,
+    start: u64,
+    end: u64,
+    tx: Sender<(u16, u64)>,
     id: u16,
 ) -> Vec<u8> {
     let range = format!("bytes={}-{}", start, end);
@@ -169,7 +168,7 @@ fn get_bytes_in_range(
             break;
         }
 
-        total_bytes_read += bytes_read as u32;
+        total_bytes_read += bytes_read as u64;
         buffer.extend_from_slice(&chunk[..bytes_read]);
         tx.send((id, total_bytes_read)).unwrap();
     }
