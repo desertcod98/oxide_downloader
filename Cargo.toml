@@ -11,3 +11,4 @@ threadpool = { git = "https://github.com/desertcod98/rusty-threadpool.git" }
 config = "^0.13.3"
 directories = "^5.0"
 indicatif = "^0.17.4"
+crypto-hash = "^0.3.4"

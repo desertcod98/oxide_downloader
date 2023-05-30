@@ -1,3 +1,4 @@
+use crypto_hash::{hex_digest, Algorithm};
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use reqwest::{blocking::Client, header::HeaderMap};
 use std::{
@@ -12,7 +13,6 @@ use std::{
     vec,
 };
 use threadpool::ThreadPool;
-
 pub struct Download {
     url: String,
     threadpool: ThreadPool,
@@ -42,7 +42,7 @@ impl Download {
         let url = Arc::new(self.url.clone());
         let temp_folder = Arc::new(self.temp_folder.clone());
 
-        let mut temp_file_counter: u16 = 1;
+        let mut thread_id: u16 = 1;
 
         let mut downloaded_bytes = 0;
 
@@ -53,19 +53,13 @@ impl Download {
             let temp_folder = Arc::clone(&temp_folder);
 
             self.threadpool.execute(move || {
-                let contents = get_bytes_in_range(
-                    &client,
-                    &url,
-                    interval.0,
-                    interval.1,
-                    tx,
-                    temp_file_counter,
-                );
-                let path = temp_folder.join(&temp_file_counter.to_string());
+                let contents =
+                    get_bytes_in_range(&client, &url, interval.0, interval.1, tx, thread_id);
+                let path = temp_folder.join(&thread_id.to_string());
                 fs::write(path, contents).unwrap();
             });
 
-            temp_file_counter += 1;
+            thread_id += 1;
         }
 
         let mut threads_progress = vec![0; self.threadpool.thread_count() + 1];
@@ -110,9 +104,12 @@ impl Download {
             fs::remove_file(filepath).unwrap();
         }
 
-        let file_name = get_download_name(&headers, &self.url);
-
-        fs::write(file_name, output).unwrap();
+        if let Some(file_name) = get_download_name(&headers, &self.url) {
+            fs::write(file_name, output).unwrap();
+        } else {
+            let digest = hex_digest(Algorithm::MD5, &output);
+            fs::write(digest, output).unwrap();
+        }
     }
 }
 
@@ -176,20 +173,20 @@ fn get_bytes_in_range(
     buffer
 }
 
-fn get_download_name(headers: &HeaderMap, url: &str) -> String {
+fn get_download_name(headers: &HeaderMap, url: &str) -> Option<String> {
     let content_disposition = headers.get("Content-Disposition");
     if let Some(cd) = content_disposition {
         if let Ok(cd_string) = cd.to_str() {
             if let Some(filename) = cd_string.split("filename=").nth(1) {
-                return filename.to_owned();
+                return Some(filename.to_owned());
             }
         }
     }
     let parts: Vec<&str> = url.split('/').collect();
     if let Some(filename) = parts.last() {
-        return filename.to_string();
+        return Some(filename.to_string());
     } else {
-        return "UNKNOWN".to_owned();
+        return None;
     }
 }
 
