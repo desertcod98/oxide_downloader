@@ -1,10 +1,8 @@
 use config::{Config, File};
 use directories::ProjectDirs;
-use std::fs::DirBuilder;
-use std::{
-    env,
-    path::{PathBuf},
-};
+use std::fs::{DirBuilder};
+use std::io::Write;
+use std::{env, path::PathBuf};
 mod download;
 
 use download::Download;
@@ -19,31 +17,37 @@ fn main() {
         .parse::<usize>()
         .unwrap();
 
-
-
     let config = Config::builder()
         .add_source(File::with_name("config.yaml"))
-        .build()
-        .unwrap();
+        .build();
 
-    let temp_folder: PathBuf = match config.get::<String>("temp_folder") {
-        Ok(temp_folder) => {
-            let path = PathBuf::from(temp_folder);
-            if path.exists() {
-                path
-            } else {
-                ProjectDirs::from("", "desertcod98", "oxide")
-                    .unwrap()
-                    .cache_dir()
-                    .to_path_buf()
+    let temp_folder = match config {
+        Ok(config) => match config.get::<String>("temp_folder") {
+            Ok(temp_folder) => {
+                let path = PathBuf::from(temp_folder);
+                if path.exists() {
+                    path
+                } else {
+                    let cache_directory = get_cache_directory();
+                    println!("temp_folder in config.yaml ({}) not found, using default temp folder {}",path.to_string_lossy(), cache_directory.to_string_lossy());
+                    cache_directory
+                }
             }
-        }
+            Err(_) => {
+                println!("temp_folder not set in config.yaml");
+                let cache_directory = get_cache_directory();
+                println!("Using default temp folder ({}), modify temp_folder propriety in config.yaml to change it",cache_directory.to_string_lossy());
+                cache_directory
+            }
+        },
         Err(_) => {
-            let current_dir = env::current_dir().expect("Couldn't get current directory");
-            let mut result_path = PathBuf::from(current_dir);
-            result_path.push("result");
-            println!("Using default temp folder ({}), modify temp_folder propriety in config.yaml to change it",result_path.to_string_lossy());
-            PathBuf::from(result_path)
+            println!("Creating config.yaml file");
+            let file = std::fs::File::create("config.yaml");
+            if let Ok(mut file) = file {
+                file.write_all(b"temp_folder : \"\"")
+                    .expect("Could not write config file");
+            }
+            get_cache_directory()
         }
     };
 
@@ -57,4 +61,11 @@ fn main() {
     let download = Download::new(url, n_threads, temp_folder);
 
     download.run();
+}
+
+fn get_cache_directory() -> PathBuf {
+    ProjectDirs::from("", "desertcod98", "oxide")
+        .unwrap()
+        .cache_dir()
+        .to_path_buf()
 }
