@@ -11,6 +11,17 @@ mod download;
 use download::Download;
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    let url = args.get(1).expect("Insert URL!");
+    let n_threads = args
+        .get(2)
+        .expect("Insert number of threads!")
+        .parse::<usize>()
+        .unwrap();
+
+
+
     let config = Config::builder()
         .add_source(File::with_name("config.yaml"))
         .build()
@@ -43,15 +54,6 @@ fn main() {
         dir_builder.recursive(true);
         dir_builder.create(&temp_folder).unwrap();
     }
-
-    let args: Vec<String> = env::args().collect();
-
-    let url = args.get(1).expect("Insert URL!");
-    let n_threads = args
-        .get(2)
-        .expect("Insert number of threads!")
-        .parse::<usize>()
-        .unwrap();
 
     let download = Download::new(url, n_threads, temp_folder);
 
