@@ -83,7 +83,7 @@ impl Download {
             pb.set_position(downloaded_bytes as u64);
         }
 
-        println!("done");
+        
 
         let mut output = Vec::with_capacity(file_size as usize);
 
@@ -104,12 +104,14 @@ impl Download {
             fs::remove_file(filepath).unwrap();
         }
 
-        if let Some(file_name) = get_download_name(&headers, &self.url) {
-            fs::write(file_name, output).unwrap();
-        } else {
-            let digest = hex_digest(Algorithm::MD5, &output);
-            fs::write(digest, output).unwrap();
-        }
+        let file_name = match get_download_name(&headers, &self.url) {
+            Some(file_name) => file_name,
+            None => hex_digest(Algorithm::MD5, &output),
+        };
+
+        fs::write(&file_name, output).unwrap();
+        println!("Dowloaded {}", file_name);
+
     }
 }
 
