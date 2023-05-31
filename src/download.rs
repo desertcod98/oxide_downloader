@@ -8,7 +8,7 @@ use std::{
     path::PathBuf,
     sync::{
         mpsc::{self, Sender},
-        Arc,
+        Arc, Barrier,
     },
     vec,
 };
@@ -45,18 +45,19 @@ impl Download {
         let mut thread_id: u16 = 1;
 
         let mut downloaded_bytes = 0;
-
+        let barrier = Arc::new(Barrier::new(self.threadpool.thread_count()+1));
         for interval in intervals {
             let client = Arc::clone(&client);
             let tx = tx.clone();
             let url = Arc::clone(&url);
             let temp_folder = Arc::clone(&temp_folder);
-
+            let barrier = Arc::clone(&barrier);
             self.threadpool.execute(move || {
                 let contents =
                     get_bytes_in_range(&client, &url, interval.0, interval.1, tx, thread_id);
                 let path = temp_folder.join(&thread_id.to_string());
                 fs::write(path, contents).unwrap();
+                barrier.wait();
                 //TODO probabilmente il programma cerca di mettere insieme i file prima che finisca il fs::write di ogni thread
                 //succede quando la scrittura è più lenta dello scaricamento
             });
@@ -85,7 +86,7 @@ impl Download {
             pb.set_position(downloaded_bytes as u64);
         }
 
-        
+        barrier.wait();
 
         let mut output = Vec::with_capacity(file_size as usize);
 
