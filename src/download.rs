@@ -10,6 +10,7 @@ use std::{
         mpsc::{self, Sender},
         Arc, Barrier,
     },
+    time::Duration,
     vec,
 };
 use threadpool::ThreadPool;
@@ -19,7 +20,7 @@ pub struct Download {
     client: Client,
     temp_folder: PathBuf,
     headers: HeaderMap,
-    filesize: Option<u64>,
+    file_size: Option<u64>,
 }
 
 impl Download {
@@ -27,7 +28,7 @@ impl Download {
         let client = Client::new();
         let headers = get_headers(&client, &url);
         let filesize = get_file_size(&headers);
-        let thread_pool = match filesize{
+        let thread_pool = match filesize {
             Some(filesize) => ThreadPool::new(n_threads),
             None => ThreadPool::new(1),
         };
@@ -37,11 +38,62 @@ impl Download {
             client: client,
             temp_folder,
             headers,
-            filesize
+            file_size: filesize,
         }
     }
 
     pub fn run(&self) {
+        if self.threadpool.thread_count() > 1 {
+            self.download_multithread();
+        } else {
+            self.download_singlethread();
+        }
+    }
+
+    fn download_singlethread(&self) {
+        let mut response = self.client.get(&self.url).send().unwrap();
+        let mut buffer = Vec::new();
+        let mut total_bytes_read = 0;
+        let pb = ProgressBar::new_spinner();
+        pb.enable_steady_tick(Duration::from_millis(120));
+        pb.set_style(
+            ProgressStyle::with_template("{spinner:.blue} {msg}")
+                .unwrap()
+                .tick_strings(&[
+                    "▹▹▹▹▹",
+                    "▸▹▹▹▹",
+                    "▹▸▹▹▹",
+                    "▹▹▸▹▹",
+                    "▹▹▹▸▹",
+                    "▹▹▹▹▸",
+                    "▪▪▪▪▪",
+                ]),
+        );
+        loop {
+            let mut chunk = [0; 4096];
+            let bytes_read = response.read(&mut chunk).unwrap();
+
+            if bytes_read == 0 {
+                break;
+            }
+
+            total_bytes_read += bytes_read as u64;
+            buffer.extend_from_slice(&chunk[..bytes_read]);
+            pb.set_message(format!("Downloaded {} bytes...", total_bytes_read));
+        }
+        pb.finish_with_message("Done");
+        let file_name = match get_download_name(&self.headers, &self.url) {
+            Some(file_name) => file_name,
+            None => hex_digest(Algorithm::MD5, &buffer),
+        };
+
+        //TODO non si riesce a scaricare da Drive perchè dice che non si è loggati (cookies probabilmente)
+        fs::write(&file_name, buffer).unwrap();
+        println!("Dowloaded {}", file_name);
+    }
+
+    fn download_multithread(&self) {
+        let file_size = self.file_size.unwrap();
         let intervals = into_intervals(file_size, self.threadpool.thread_count() as u64);
 
         let (tx, rx) = mpsc::channel::<(u16, u64)>();
@@ -113,7 +165,7 @@ impl Download {
             fs::remove_file(filepath).unwrap();
         }
 
-        let file_name = match get_download_name(&headers, &self.url) {
+        let file_name = match get_download_name(&self.headers, &self.url) {
             Some(file_name) => file_name,
             None => hex_digest(Algorithm::MD5, &output),
         };
