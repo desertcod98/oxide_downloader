@@ -58,8 +58,6 @@ impl Download {
                 let path = temp_folder.join(&thread_id.to_string());
                 fs::write(path, contents).unwrap();
                 barrier.wait();
-                //TODO probabilmente il programma cerca di mettere insieme i file prima che finisca il fs::write di ogni thread
-                //succede quando la scrittura è più lenta dello scaricamento
             });
 
             thread_id += 1;
