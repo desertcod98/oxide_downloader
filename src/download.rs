@@ -18,22 +18,30 @@ pub struct Download {
     threadpool: ThreadPool,
     client: Client,
     temp_folder: PathBuf,
+    headers: HeaderMap,
+    filesize: Option<u64>,
 }
 
 impl Download {
     pub fn new(url: &str, n_threads: usize, temp_folder: PathBuf) -> Self {
+        let client = Client::new();
+        let headers = get_headers(&client, &url);
+        let filesize = get_file_size(&headers);
+        let thread_pool = match filesize{
+            Some(filesize) => ThreadPool::new(n_threads),
+            None => ThreadPool::new(1),
+        };
         Download {
             url: url.to_owned(),
-            threadpool: ThreadPool::new(n_threads),
-            client: Client::new(),
+            threadpool: thread_pool,
+            client: client,
             temp_folder,
+            headers,
+            filesize
         }
     }
 
     pub fn run(&self) {
-        let headers = get_headers(&self.client, &self.url);
-        let file_size = get_file_size(&headers);
-
         let intervals = into_intervals(file_size, self.threadpool.thread_count() as u64);
 
         let (tx, rx) = mpsc::channel::<(u16, u64)>();
@@ -45,7 +53,7 @@ impl Download {
         let mut thread_id: u16 = 1;
 
         let mut downloaded_bytes = 0;
-        let barrier = Arc::new(Barrier::new(self.threadpool.thread_count()+1));
+        let barrier = Arc::new(Barrier::new(self.threadpool.thread_count() + 1));
         for interval in intervals {
             let client = Arc::clone(&client);
             let tx = tx.clone();
@@ -112,7 +120,6 @@ impl Download {
 
         fs::write(&file_name, output).unwrap();
         println!("Dowloaded {}", file_name);
-
     }
 }
 
@@ -132,15 +139,15 @@ fn into_intervals(number: u64, interval: u64) -> Vec<(u64, u64)> {
     intervals
 }
 
-fn get_file_size(headers: &HeaderMap) -> u64 {
-    //TODO what to do if no file size? go back to single thread probably
-    headers
-        .get("content-length")
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .parse::<u64>()
-        .unwrap()
+fn get_file_size(headers: &HeaderMap) -> Option<u64> {
+    if let Some(content_length) = headers.get("Content-Length") {
+        if let Ok(content_lenght_str) = content_length.to_str() {
+            if let Ok(content_lenght_number) = content_lenght_str.parse::<u64>() {
+                return Some(content_lenght_number);
+            }
+        }
+    }
+    return None;
 }
 
 fn get_bytes_in_range(
