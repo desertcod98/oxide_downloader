@@ -29,7 +29,7 @@ impl Download {
         let headers = get_headers(&client, &url);
         let filesize = get_file_size(&headers);
         let thread_pool = match filesize {
-            Some(filesize) => ThreadPool::new(n_threads),
+            Some(_filesize) => ThreadPool::new(n_threads),
             None => ThreadPool::new(1),
         };
         Download {
