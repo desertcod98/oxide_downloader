@@ -29,7 +29,7 @@ fn main() {
                     path
                 } else {
                     let cache_directory = get_cache_directory();
-                    println!("temp_folder in config.yaml ({}) not found, using default temp folder {}",path.to_string_lossy(), cache_directory.to_string_lossy());
+                    println!("temp_folder in config.yaml ({}) does not exist, using default temp folder {}",path.to_string_lossy(), cache_directory.to_string_lossy());
                     cache_directory
                 }
             }
